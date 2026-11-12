@@ -16,7 +16,7 @@ jobs:
     env:
       FLAGOS_SSH_KEY: ${{ secrets.a123 }}
     steps:
-      - name: Read real-text service self-control and explicit dtype diagnostics
+      - name: Read earliest isolated P2 engine failure context
         shell: bash
         run: |
           set -euo pipefail
@@ -39,21 +39,18 @@ jobs:
             'python3 - <<'\''PY'\''
           from pathlib import Path
           import json,subprocess
-          print("P2_STATUS_READ_BEGIN",flush=True)
-          for filename in ["/root/e249/serial_status.json","/root/e245/p2-row-a1/result.json","/root/e245/p2_row_a2/status.json","/root/e245/p2-row-a2/result.json"]:
-           p=Path(filename)
-           if p.is_file():print("RESULT_JSON",json.dumps({"path":filename,"data":json.loads(p.read_text())}),flush=True)
-           else:print("MISSING",filename,flush=True)
-          for filename in ["/root/e245/p2_row_a1.log","/root/e245/p2-row-a1/serve.log","/root/e245/p2_row_a2/task.log","/root/e245/p2_row_a2/wrapper.log","/root/e245/p2-row-a2/serve.log"]:
-           p=Path(filename)
-           if p.is_file():print("LOG_TAIL",json.dumps({"path":filename,"lines":p.read_text(errors="replace").splitlines()[-35:]}),flush=True)
-          for out in ["/root/e245/p2-row-a1","/root/e245/p2-row-a2"]:
-           p=Path(out)/"events.jsonl"
-           if p.is_file():print("EVENTS_TAIL",json.dumps({"path":str(p),"lines":p.read_text().splitlines()[-8:]}),flush=True)
-           p=Path(out)/"weights.json"
-           if p.is_file():
-            x=json.loads(p.read_text());x["matrices"]=x.get("matrices",[])[:2]
-            print("WEIGHTS_SUMMARY",json.dumps(x),flush=True)
-          print("GPU_MEMORY_USED",subprocess.check_output(["/usr/local/corex/bin/ixsmi","--query-gpu=memory.used","--format=csv,noheader"],text=True).strip(),flush=True)
-          print("P2_STATUS_READ_END",flush=True)
+          print("P2_EARLIEST_FAILURE_READ_BEGIN",flush=True)
+          for name in ["p2-row-a1","p2-row-a2"]:
+           p=Path("/root/e245")/name/"serve.log"
+           if not p.is_file():continue
+           lines=p.read_text(errors="replace").splitlines()
+           hits=[i for i,s in enumerate(lines)if any(x in s for x in ["Traceback","TypeError:","ValueError:","AssertionError:","Unsupported","unsupported","p2_observer.py","weights_prepared","Error in sitecustomize"])]
+           chosen=set()
+           for i in hits[:20]:chosen.update(range(max(0,i-5),min(len(lines),i+18)))
+           print("ERROR_CONTEXT",json.dumps({"path":str(p),"lines":[[i+1,lines[i]]for i in sorted(chosen)]}),flush=True)
+           p=Path("/root/e245")/name/"result.json"
+           if p.is_file():print("RESULT_JSON",json.dumps({"path":str(p),"data":json.loads(p.read_text())}),flush=True)
+          p=Path("/root/e245/p2_row_a2/status.json")
+          if p.is_file():print("RESULT_JSON",json.dumps({"path":str(p),"data":json.loads(p.read_text())}),flush=True)
+          print("P2_EARLIEST_FAILURE_READ_END",flush=True)
           PY'
