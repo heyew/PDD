@@ -16,7 +16,7 @@ jobs:
     env:
       FLAGOS_SSH_KEY: ${{ secrets.a123 }}
     steps:
-      - name: Read E253 actual capture and export progress
+      - name: Read E253 verified capture and eight matrix results
         shell: bash
         run: |
           set -euo pipefail
@@ -36,30 +36,27 @@ jobs:
             -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$HOME/.ssh/known_hosts" \
             -o ConnectTimeout=8 -o LogLevel=ERROR \
             lab_inst_01M65FEWSPNR8MP3DS4KNYDQ2C@ssh.flagos.io \
-            'python3 - <<'\''E253STATUS3'\''
+            'python3 - <<'\''E253FINAL'\''
           from pathlib import Path
-          import json, gzip, base64, hashlib, subprocess, time
+          import json, gzip, base64, hashlib, subprocess
           r=Path('\''/root/e253/quality'\'')
-          deadline=time.monotonic()+35
-          while time.monotonic()<deadline:
-           p=r/'\''guard_state.json'\'';state=json.loads(p.read_text()) if p.exists() else {}
-           if state.get('\''phase'\'')=='\''feedback'\'' or (r/'\''done.json'\'').exists():break
-           time.sleep(1)
+          names=['\''guard_state.json'\'','\''done.json'\'','\''source_manifest.json'\'','\''capture-a1/result.json'\'','\''capture-a1/copy_precheck/result.json'\'','\''capture-a1/cases_public.json'\'','\''capture-a1/source_manifest.json'\'','\''capture-a1/runtime_sources.json'\'','\''capture-a1/weights.json'\'','\''capture-a1/snapshot_manifest.json'\'','\''capture-a1/raw/calibration/capture.json'\'','\''capture-a1/raw/heldout/capture.json'\'','\''feedback-a1/result.json'\'']
+          names += [str(p.relative_to(r)) for p in sorted((r/'\''feedback-a1'\'').glob('\''layer_*/result.json'\''))]
           bundle={}
-          for name in ('\''guard_state.json'\'','\''done.json'\'','\''capture-a1/result.json'\'','\''capture-a1/copy_precheck/result.json'\'','\''feedback-a1/result.json'\''):
+          for name in names:
            p=r/name
-           if p.exists():bundle[name]=json.loads(p.read_text())
-          print('\''STATUS '\''+json.dumps({n:{k:v.get(k) for k in ('\''status'\'','\''phase'\'','\''decision'\'','\''complete'\'','\''elapsed_host_s'\'','\''service_elapsed_s'\'','\''error'\'','\''failure'\'','\''timings'\'','\''partitions'\'','\''active_matrix'\'') if k in v} for n,v in bundle.items()},sort_keys=True))
-          p=r/'\''capture-a1/weights'\''
-          if p.exists():
-           files=list(p.glob('\''*.npz'\''));print('\''WEIGHT_EXPORT_PROGRESS '\''+json.dumps({'\''files'\'':len(files),'\''bytes'\'':sum(f.stat().st_size for f in files)}))
-          for name in ('\''capture.log'\'','\''capture-a1/serve.log'\'','\''feedback.log'\''):
+           if p.exists():
+            b=p.read_bytes();bundle[name]={'\''sha256'\'':hashlib.sha256(b).hexdigest(),'\''text'\'':b.decode()}
+          summary={}
+          for name in ('\''done.json'\'','\''capture-a1/result.json'\'','\''feedback-a1/result.json'\''):
            p=r/name
-           if p.exists():print('\''LOG '\''+name+'\''\n'\''+p.read_text(errors='\''replace'\'')[-11000:])
-          p=r/'\''capture-a1/events.jsonl'\''
-          if p.exists():print('\''RECENT_EVENTS\n'\''+'\''\n'\''.join(p.read_text().splitlines()[-5:]))
-          b=json.dumps(bundle,indent=2).encode()
-          print('\''BUNDLE_SHA256 '\''+hashlib.sha256(b).hexdigest())
-          print('\''BUNDLE_GZIP_B64 '\''+base64.b64encode(gzip.compress(b,mtime=0)).decode())
+           if p.exists():
+            d=json.loads(p.read_text());summary[name]={k:d[k] for k in ('\''status'\'','\''phase'\'','\''decision'\'','\''complete'\'','\''elapsed_host_s'\'','\''service_elapsed_s'\'','\''timings'\'','\''partitions'\'','\''active_matrix'\'','\''mean_heldout_mse_ratio_full_over_rtn'\'','\''max_heldout_mse_ratio_full_over_rtn'\'','\''failure'\'') if k in d}
+          p=r/'\''feedback-a1/result.json'\''
+          if p.exists():summary['\''matrices'\'']=[{'\''layer'\'':d['\''layer'\''],'\''role'\'':d['\''role'\''],'\''ratios'\'':d['\''heldout_mse_ratios'\'']} for d in json.loads(p.read_text()).get('\''matrices'\'',[])]
+          print('\''SUMMARY '\''+json.dumps(summary,sort_keys=True))
+          b=json.dumps(bundle,separators=('\'','\'','\'':'\'')).encode();z=gzip.compress(b,mtime=0)
+          print('\''BUNDLE_INFO '\''+json.dumps({'\''files'\'':len(bundle),'\''raw_bytes'\'':len(b),'\''gzip_bytes'\'':len(z),'\''sha256'\'':hashlib.sha256(b).hexdigest()}))
+          print('\''BUNDLE_GZIP_B64 '\''+base64.b64encode(z).decode())
           print('\''GPU_MEMORY '\''+subprocess.check_output(['\''/usr/local/corex/bin/ixsmi'\'','\''--query-gpu=memory.used'\'','\''--format=csv,noheader'\''],text=True).strip())
-          E253STATUS3'
+          E253FINAL'
