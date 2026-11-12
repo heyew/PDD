@@ -16,7 +16,7 @@ jobs:
     env:
       FLAGOS_SSH_KEY: ${{ secrets.a123 }}
     steps:
-      - name: Audit E256 remote baseline source differences
+      - name: Audit E256 baseline including missing compatibility files
         shell: bash
         run: |
           set -euo pipefail
@@ -36,7 +36,7 @@ jobs:
             -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$HOME/.ssh/known_hosts" \
             -o ConnectTimeout=8 -o LogLevel=ERROR \
             lab_inst_01M65FEWSPNR8MP3DS4KNYDQ2C@ssh.flagos.io \
-            'python3 - <<'\''E256_AUDIT'\''
+            'python3 - <<'\''E256_AUDIT2'\''
           import base64,gzip,hashlib,json
           from pathlib import Path
           root=Path('\''/root/e214/candidate-a1'\'')
@@ -44,12 +44,13 @@ jobs:
           changed={}
           for name,wanted in pins.items():
            p=root/name
-           b=p.read_bytes()
-           got=hashlib.sha256(b).hexdigest()
-           if got!=wanted:
-            changed[name]={'\''expected'\'':wanted,'\''actual'\'':got,'\''bytes'\'':len(b),'\''text'\'':b.decode()}
+           if not p.is_file():
+            changed[name]={'\''expected'\'':wanted,'\''actual'\'':None,'\''text'\'':None}
+            continue
+           b=p.read_bytes(); got=hashlib.sha256(b).hexdigest()
+           if got!=wanted: changed[name]={'\''expected'\'':wanted,'\''actual'\'':got,'\''bytes'\'':len(b),'\''text'\'':b.decode()}
           raw=json.dumps(changed).encode()
           Path('\''/root/e256/baseline_differences.json'\'').write_bytes(raw)
           print('\''E256_BASELINE_DIFF_SUMMARY '\''+json.dumps({n:{k:v for k,v in x.items() if k!='\''text'\''} for n,x in changed.items()}))
           print('\''E256_BASELINE_DIFF_GZIP_B64 '\''+base64.b64encode(gzip.compress(raw,mtime=0)).decode())
-          E256_AUDIT'
+          E256_AUDIT2'
