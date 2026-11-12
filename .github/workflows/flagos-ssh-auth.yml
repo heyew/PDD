@@ -16,7 +16,7 @@ jobs:
     env:
       FLAGOS_SSH_KEY: ${{ secrets.a123 }}
     steps:
-      - name: Read E256 lifecycle and startup progress
+      - name: Read E256 functional lifecycle completion
         shell: bash
         run: |
           set -euo pipefail
@@ -39,23 +39,25 @@ jobs:
             'python3 - <<'\''E256_STATUS'\''
           import json,time,subprocess
           from pathlib import Path
-          out=Path('\''/root/e256/lifecycle-a2'\'')
-          guard=Path(str(out)+'\''.guard.json'\'')
+          out=Path('\''/root/e256/lifecycle-a2'\''); guard=Path(str(out)+'\''.guard.json'\'')
           end=time.monotonic()+45
           while time.monotonic()<end:
            d=json.loads(guard.read_text()) if guard.exists() else {}
-           if d.get('\''status'\'') not in ('\''RUNNING'\'','\''STARTING'\'',None): break
+           if d.get('\''status'\'') not in ('\''RUNNING'\'','\''STARTING'\'',None):break
            time.sleep(1)
-          print('\''E256_STATUS_BEGIN'\'',flush=True)
+          print('\''E256_STATUS2_BEGIN'\'',flush=True)
           for p in [guard,out/'\''result.json'\'',out/'\''observer_error.json'\'',out/'\''startup_observer_error.json'\'',out/'\''observer_summary.json'\'']:
            if p.exists():
             d=json.loads(p.read_text())
-            if p.name=='\''result.json'\'': d={k:d.get(k) for k in ['\''complete'\'','\''functional_passed'\'','\''decision'\'','\''error'\'','\''timings'\'','\''responses'\'','\''ready63'\'','\''released_A'\'','\''released_B'\'','\''audit'\'','\''cleanup'\'']}
+            if p.name=='\''result.json'\'':d={k:d.get(k) for k in ['\''complete'\'','\''functional_passed'\'','\''decision'\'','\''error'\'','\''timings'\'','\''ready63'\'','\''released_A'\'','\''released_B'\'','\''audit'\'','\''cleanup'\'']}
+            if p.name=='\''observer_summary.json'\'':d={k:d.get(k) for k in ['\''receipt_sha256'\'','\''counts'\'','\''issues'\'','\''targets'\'']}
             print('\''FILE'\'',str(p),json.dumps(d),flush=True)
+          for p in out.glob('\''startup-*.json'\''):
+           d=json.loads(p.read_text()); rows=[{'\''function'\'':e.get('\''function'\''),'\''wall_s'\'':e.get('\''wall_ns'\'',0)/1e9,'\''cpu_s'\'':e.get('\''process_cpu_duration_ns'\'',0)/1e9,'\''error_type'\'':e.get('\''error_type'\'')} for e in d.get('\''events'\'',[]) if e.get('\''kind'\'')=='\''exit'\'']
+           print('\''STARTUP'\'',p.name,json.dumps(rows),flush=True)
           print('\''FILES'\'',[(p.name,p.stat().st_size) for p in out.iterdir() if p.is_file()],flush=True)
-          for name in ['\''serve.log'\'','\''startup.jsonl'\'','\''startup_events.jsonl'\'']:
-           p=out/name
-           if p.exists(): print('\''TAIL'\'',name,p.read_text(errors='\''replace'\'')[-14000:],flush=True)
+          p=out/'\''serve.log'\''
+          if p.exists():print('\''SERVE_TAIL'\'',p.read_text(errors='\''replace'\'')[-13000:],flush=True)
           print('\''GPU_MEMORY'\'',subprocess.check_output(['\''ixsmi'\'','\''--query-gpu=memory.used'\'','\''--format=csv,noheader'\''],text=True,timeout=5),flush=True)
-          print('\''E256_STATUS_END'\'',flush=True)
+          print('\''E256_STATUS2_END'\'',flush=True)
           E256_STATUS'
