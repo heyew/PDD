@@ -1,0 +1,45 @@
+name: FlagOS SSH connectivity probe
+
+on:
+  push:
+    branches:
+      - chatgpt/flagos-ssh-connectivity-20261112
+    paths:
+      - .github/workflows/flagos-connectivity.yml
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Check DNS and TCP reachability (no SSH login)
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import socket
+          import time
+
+          host, port = "ssh.flagos.io", 2224
+          print(f"Checking DNS for {host} and TCP port {port}", flush=True)
+          try:
+              addrs = sorted({info[4][0] for info in socket.getaddrinfo(host, port, type=socket.SOCK_STREAM)})
+              print(f"DNS_OK: {addrs}", flush=True)
+          except Exception as exc:
+              print(f"DNS_FAIL: {type(exc).__name__}: {exc}", flush=True)
+              raise SystemExit(0)
+
+          for address in addrs:
+              try:
+                  with socket.create_connection((address, port), timeout=5):
+                      print(f"TCP_OK: {address}:{port}", flush=True)
+                      break
+              except Exception as exc:
+                  print(f"TCP_FAIL: {address}:{port}: {type(exc).__name__}: {exc}", flush=True)
+          else:
+              print("OVERALL: no address reachable from GitHub runner", flush=True)
+              raise SystemExit(0)
+          print("OVERALL: TCP reachable; authentication NOT tested", flush=True)
+          PY
