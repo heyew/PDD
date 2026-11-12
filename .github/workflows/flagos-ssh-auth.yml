@@ -14,14 +14,14 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 2
     env:
-      FLAGOS_SSH_KEY: ${{ secrets.FLAGOS_SSH_KEY }}
+      FLAGOS_SSH_KEY: ${{ secrets.a123 }}
     steps:
       - name: Read-only remote SSH identity probe
         shell: bash
         run: |
           set -euo pipefail
           if [ -z "${FLAGOS_SSH_KEY:-}" ]; then
-            echo "::error::FLAGOS_SSH_KEY is missing; add it to Actions repository secrets and rerun this job."
+            echo "::error::Secret a123 is missing; add it to Actions repository secrets and rerun this job."
             exit 1
           fi
           umask 077
