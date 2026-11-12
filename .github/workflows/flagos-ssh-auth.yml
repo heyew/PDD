@@ -16,7 +16,7 @@ jobs:
     env:
       FLAGOS_SSH_KEY: ${{ secrets.a123 }}
     steps:
-      - name: Read E253 real text quality completion with bounded wait
+      - name: Audit saved E253 full vocabulary outputs and final provenance
         shell: bash
         run: |
           set -euo pipefail
@@ -38,22 +38,18 @@ jobs:
             lab_inst_01M65FEWSPNR8MP3DS4KNYDQ2C@ssh.flagos.io \
             'python3 - <<'\''PY'\''
           from pathlib import Path
-          import json,hashlib,gzip,base64,subprocess,time
-          q=Path('\''/root/e253/quality'\'');bundle={};summary={}
-          wait_until=time.monotonic()+45
-          while not (q/'\''p2/done.json'\'').exists() and time.monotonic()<wait_until:time.sleep(1)
-          for rel in ('\''encode_guard-a2.json'\'','\''encoded-block128-a1/manifest.json'\'','\''p2/guard_state.json'\'','\''p2/done.json'\'','\''p2-a1/result.json'\'','\''p2-a1/phase.json'\''):
-           p=q/rel
-           if not p.exists():continue
-           b=p.read_bytes();d=json.loads(b);bundle[rel]={'\''text'\'':b.decode(),'\''sha256'\'':hashlib.sha256(b).hexdigest()}
-           s={k:d[k] for k in ('\''status'\'','\''complete'\'','\''decision'\'','\''failure'\'','\''error'\'','\''returncode'\'','\''active_matrix'\'','\''last_budget_projection'\'','\''timings'\'','\''arms'\'','\''screen_gate'\'','\''wait_encoder_actual_s'\'','\''driver_elapsed_s'\'','\''elapsed_host_s'\'','\''attempts'\'','\''all_8_existing_32row_sentinels_bitwise'\'','\''gpu_memory_before_service'\'','\''gpu_memory_after'\'','\''stage'\'','\''arm'\'','\''label'\'') if k in d}
-           if '\''files'\'' in d:s['\''matrices'\'']=len(d['\''files'\''])
-           if '\''quality'\'' in d:s['\''quality_decode'\'']=d['\''quality'\'']['\''decode'\''];s['\''quality_prefill'\'']=d['\''quality'\'']['\''prefill'\'']
-           summary[rel]=s
-          print('\''SUMMARY '\''+json.dumps(summary))
+          import json,hashlib,gzip,base64,subprocess,os
+          q=Path('\''/root/e253/quality'\'');root=q/'\''p2-a1'\''
+          assert json.loads((q/'\''p2/done.json'\'').read_text())['\''status'\'']=='\''COMPLETE'\''
+          b=gzip.decompress(base64.b64decode('\''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'\''));assert hashlib.sha256(b).hexdigest()=='\''2e68953b0b89d1bab6bbf091b5833d75e9c71f62b19a2dbfaa72147d63670c10'\''
+          p=q/'\''p2/audit_logits.py'\'';assert not p.exists();p.write_bytes(b)
+          env={**os.environ,'\''OPENBLAS_NUM_THREADS'\'':'\''1'\'','\''OMP_NUM_THREADS'\'':'\''1'\'','\''MKL_NUM_THREADS'\'':'\''1'\''}
+          r=subprocess.run(['\''python3'\'',str(p),'\''--out'\'',str(root)],cwd=q/'\''p2'\'',env=env,capture_output=True,text=True,timeout=90)
+          print(r.stdout);print(r.stderr);assert r.returncode==0,r.returncode
+          names=['\''p2/done.json'\'','\''encode_guard-a2.json'\'','\''encoded-block128-a1/manifest.json'\'','\''p2-a1/result.json'\'','\''p2-a1/cases.json'\'','\''p2-a1/cases_public.json'\'','\''p2-a1/source_manifest.json'\'','\''p2-a1/runtime_sources.json'\'','\''p2-a1/weights.json'\'','\''p2-a1/events.jsonl'\'','\''p2-a1/quality_gate.json'\'','\''p2-a1/owned_service.json'\'','\''p2-a1/independent_vocab_audit.json'\'','\''p2-a1/raw_logits_manifest.json'\'','\''p2-a1/encoded_inputs.json'\'','\''p2-a1/serve.log'\'']
+          bundle={}
+          for name in names:
+           b=(q/name).read_bytes();bundle[name]={'\''text'\'':b.decode(),'\''sha256'\'':hashlib.sha256(b).hexdigest()}
           b=json.dumps(bundle,sort_keys=True).encode();print('\''BUNDLE_INFO '\''+json.dumps({'\''files'\'':len(bundle),'\''bytes'\'':len(b),'\''sha256'\'':hashlib.sha256(b).hexdigest()}));print('\''BUNDLE_GZIP_B64 '\''+base64.b64encode(gzip.compress(b,mtime=0)).decode())
-          for rel in ('\''encode-a2.log'\'','\''p2/driver-a1.log'\'','\''p2-a1/serve.log'\''):
-           p=q/rel
-           if p.exists():print('\''LOG_TAIL '\''+rel+'\''\\n'\''+'\''\\n'\''.join(p.read_text(errors='\''replace'\'').splitlines()[-14:]))
           print('\''GPU_MEMORY '\''+subprocess.check_output(['\''/usr/local/corex/bin/ixsmi'\'','\''--query-gpu=memory.used'\'','\''--format=csv,noheader'\''],text=True).strip())
           PY'
