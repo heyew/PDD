@@ -16,7 +16,7 @@ jobs:
     env:
       FLAGOS_SSH_KEY: ${{ secrets.a123 }}
     steps:
-      - name: Read measured MMA ceiling and isolated grid and W4 progress
+      - name: Read real-text W4 quality control and child completion
         shell: bash
         run: |
           set -euo pipefail
@@ -39,8 +39,8 @@ jobs:
             'python3 - <<'\''PY'\''
           from pathlib import Path
           import json,subprocess
-          print("FLAGOS_SERIAL_PROGRESS_BEGIN",flush=True)
-          for filename in ["/root/e249/serial_status.json","/root/e248/a2/result.json","/root/e249/a1/result.json","/root/e245/p2-row-a1/result.json"]:
+          print("FLAGOS_SERIAL_PROGRESS_2_BEGIN",flush=True)
+          for filename in ["/root/e249/serial_status.json","/root/e245/p2-row-a1/result.json"]:
            p=Path(filename)
            if p.is_file():
             print("RESULT_JSON",json.dumps({"path":filename,"data":json.loads(p.read_text())}),flush=True)
@@ -49,5 +49,5 @@ jobs:
            p=Path(filename)
            if p.is_file():print("LOG_TAIL",json.dumps({"path":filename,"lines":p.read_text(errors="replace").splitlines()[-24:]}),flush=True)
           print("GPU_MEMORY_USED",subprocess.check_output(["/usr/local/corex/bin/ixsmi","--query-gpu=memory.used","--format=csv,noheader"],text=True).strip(),flush=True)
-          print("FLAGOS_SERIAL_PROGRESS_END",flush=True)
+          print("FLAGOS_SERIAL_PROGRESS_2_END",flush=True)
           PY'
