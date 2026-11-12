@@ -1,0 +1,39 @@
+name: FlagOS SSH identity probe
+
+on:
+  push:
+    branches:
+      - chatgpt/flagos-ssh-connectivity-20261112
+    paths:
+      - .github/workflows/flagos-ssh-auth.yml
+
+permissions: {}
+
+jobs:
+  ssh-readonly:
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    env:
+      FLAGOS_SSH_KEY: ${{ secrets.FLAGOS_SSH_KEY }}
+    steps:
+      - name: Read-only remote SSH identity probe
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -z "${FLAGOS_SSH_KEY:-}" ]; then
+            echo "::error::FLAGOS_SSH_KEY is missing; add it to Actions repository secrets and rerun this job."
+            exit 1
+          fi
+          umask 077
+          mkdir -p "$HOME/.ssh"
+          chmod 700 "$HOME/.ssh"
+          printf "%s\n" "$FLAGOS_SSH_KEY" > "$HOME/.ssh/flagos_actions"
+          printf "%s\n" "[ssh.flagos.io]:2224 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIBXHybs2tlTdSKA6PFRjarvdNbIh/YJY9Sy9xZ0UknOA" > "$HOME/.ssh/known_hosts"
+          chmod 600 "$HOME/.ssh/flagos_actions" "$HOME/.ssh/known_hosts"
+          ssh -F /dev/null -i "$HOME/.ssh/flagos_actions" -p 2224 \
+            -o BatchMode=yes -o IdentitiesOnly=yes \
+            -o PreferredAuthentications=publickey -o PasswordAuthentication=no \
+            -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$HOME/.ssh/known_hosts" \
+            -o ConnectTimeout=8 -o LogLevel=ERROR \
+            lab_inst_01M65FEWSPNR8MP3DS4KNYDQ2C@ssh.flagos.io \
+            'printf "REMOTE_LOGIN_OK\n"; id -un; hostname; pwd'
