@@ -20,7 +20,6 @@ jobs:
         run: |
           python3 - <<'PY'
           import socket
-          import time
 
           host, port = "ssh.flagos.io", 2224
           print(f"Checking DNS for {host} and TCP port {port}", flush=True)
@@ -43,3 +42,12 @@ jobs:
               raise SystemExit(0)
           print("OVERALL: TCP reachable; authentication NOT tested", flush=True)
           PY
+      - name: Capture SSH server host key (public data, unverified)
+        shell: bash
+        run: |
+          echo HOSTKEY_BEGIN
+          ssh-keyscan -T 7 -p 2224 -t ed25519 ssh.flagos.io 2>/dev/null | tee /tmp/flagos_known_hosts
+          echo HOSTKEY_END
+          if test -s /tmp/flagos_known_hosts; then
+            ssh-keygen -lf /tmp/flagos_known_hosts
+          fi
