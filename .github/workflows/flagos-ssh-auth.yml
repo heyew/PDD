@@ -16,7 +16,7 @@ jobs:
     env:
       FLAGOS_SSH_KEY: ${{ secrets.a123 }}
     steps:
-      - name: Read E253 derived weights completion and quality startup
+      - name: Read E253 real text quality completion with bounded wait
         shell: bash
         run: |
           set -euo pipefail
@@ -38,8 +38,10 @@ jobs:
             lab_inst_01M65FEWSPNR8MP3DS4KNYDQ2C@ssh.flagos.io \
             'python3 - <<'\''PY'\''
           from pathlib import Path
-          import json,hashlib,gzip,base64,subprocess
+          import json,hashlib,gzip,base64,subprocess,time
           q=Path('\''/root/e253/quality'\'');bundle={};summary={}
+          wait_until=time.monotonic()+45
+          while not (q/'\''p2/done.json'\'').exists() and time.monotonic()<wait_until:time.sleep(1)
           for rel in ('\''encode_guard-a2.json'\'','\''encoded-block128-a1/manifest.json'\'','\''p2/guard_state.json'\'','\''p2/done.json'\'','\''p2-a1/result.json'\'','\''p2-a1/phase.json'\''):
            p=q/rel
            if not p.exists():continue
