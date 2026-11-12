@@ -16,7 +16,7 @@ jobs:
     env:
       FLAGOS_SSH_KEY: ${{ secrets.a123 }}
     steps:
-      - name: Read conditioned flush cost and real-text W4 quality status
+      - name: Read conditioned flush and real-service results
         shell: bash
         run: |
           set -euo pipefail
@@ -40,6 +40,7 @@ jobs:
           from pathlib import Path
           import json,subprocess
           print("CONDITIONED_FLUSH_P2_RESULT_BEGIN",flush=True)
+          print("POLL_REVISION",2,flush=True)
           for filename in ["/root/e251/v2_p2_status.json","/root/e251/pair-v2-a1/result.json","/root/e245/p2-row-a3/result.json"]:
            p=Path(filename)
            if p.is_file():print("RESULT_JSON",json.dumps({"path":filename,"data":json.loads(p.read_text())}),flush=True)
