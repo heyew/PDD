@@ -16,7 +16,7 @@ jobs:
     env:
       FLAGOS_SSH_KEY: ${{ secrets.a123 }}
     steps:
-      - name: Collect E256 completed lifecycle evidence
+      - name: Preserve sixteen E256 raw lifecycle logits
         shell: bash
         run: |
           set -euo pipefail
@@ -36,34 +36,19 @@ jobs:
             -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$HOME/.ssh/known_hosts" \
             -o ConnectTimeout=8 -o LogLevel=ERROR \
             lab_inst_01M65FEWSPNR8MP3DS4KNYDQ2C@ssh.flagos.io \
-            'python3 - <<'\''E256_STATUS'\''
-          import json,time,subprocess,hashlib,base64,gzip
+            'python3 - <<'\''E256_LOGITS'\''
+          import json,hashlib,base64,lzma,subprocess
           from pathlib import Path
-          out=Path('\''/root/e256/lifecycle-a2'\'');guard=Path(str(out)+'\''.guard.json'\'')
-          end=time.monotonic()+45
-          while time.monotonic()<end:
-           d=json.loads(guard.read_text()) if guard.exists() else {}
-           if d.get('\''status'\'') not in ('\''RUNNING'\'','\''STARTING'\'',None):break
-           time.sleep(1)
-          print('\''E256_STATUS3_BEGIN'\'',flush=True)
-          d=json.loads(guard.read_text());print('\''GUARD'\'',json.dumps(d),flush=True)
-          x=json.loads((out/'\''result.json'\'').read_text());print('\''RESULT'\'',json.dumps({k:x.get(k) for k in ['\''complete'\'','\''functional_passed'\'','\''decision'\'','\''error'\'','\''timings'\'','\''audit'\'','\''cleanup'\'']}),flush=True)
-          for n in ['\''observer_error.json'\'','\''startup_observer_error.json'\'','\''ready63.json'\'','\''released_A.json'\'','\''released_B.json'\'']:
-           p=out/n
-           if p.exists():print('\''FILE'\'',n,p.read_text(),flush=True)
-          print('\''LOGIT_FILES'\'',[(p.name,p.stat().st_size,hashlib.sha256(p.read_bytes()).hexdigest()) for p in (out/'\''logits'\'').glob('\''*.npz'\'')],flush=True)
-          p=out/'\''serve.log'\''
-          if p.exists():print('\''SERVE_TAIL'\'',p.read_text(errors='\''replace'\'')[-10000:],flush=True)
+          out=Path('\''/root/e256/lifecycle-a2'\'')
+          assert hashlib.sha256((out/'\''result.json'\'').read_bytes()).hexdigest()=='\''85fc675045e6297b6d60c589a1451c67aeb819cc535ddf82bce749fdbe1636f1'\''
+          r=json.loads((out/'\''result.json'\'').read_text());assert r['\''complete'\''] and r['\''functional_passed'\'']
+          files=sorted((out/'\''logits'\'').glob('\''*.npz'\''));assert len(files)==16
+          data={str(p.relative_to('\''/root/e256'\'')):base64.b64encode(p.read_bytes()).decode() for p in files}
+          raw=json.dumps(data,sort_keys=True).encode();packed=lzma.compress(raw,format=lzma.FORMAT_XZ,check=lzma.CHECK_SHA256,preset=6)
+          print('\''E256_LOGITS_META'\'',json.dumps({'\''files'\'':len(files),'\''raw_bytes'\'':len(raw),'\''xz_bytes'\'':len(packed),'\''raw_sha256'\'':hashlib.sha256(raw).hexdigest(),'\''files_sha256'\'':{p.name:hashlib.sha256(p.read_bytes()).hexdigest() for p in files}}),flush=True)
+          print('\''E256_LOGITS_B64_BEGIN'\'',flush=True)
+          s=base64.b64encode(packed).decode()
+          for i in range(0,len(s),60000):print(s[i:i+60000],flush=True)
+          print('\''E256_LOGITS_B64_END'\'',flush=True)
           print('\''GPU_MEMORY'\'',subprocess.check_output(['\''ixsmi'\'','\''--query-gpu=memory.used'\'','\''--format=csv,noheader'\''],text=True,timeout=5),flush=True)
-          if d.get('\''status'\'') not in ['\''RUNNING'\'','\''STARTING'\'']:
-           paths=[p for run in ['\''lifecycle-a1'\'','\''lifecycle-a2'\''] for p in Path('\''/root/e256'\'',run).rglob('\''*'\'') if p.is_file() and p.suffix!='\''.npz'\'']
-           paths += [Path('\''/root/e256'\'')/(r+s) for r in ['\''lifecycle-a1'\'','\''lifecycle-a2'\''] for s in ['\''.guard.json'\'','\''.driver.log'\'','\''.outer.log'\'']]
-           data={str(p.relative_to('\''/root/e256'\'')):base64.b64encode(p.read_bytes()).decode() for p in paths if p.exists()}
-           raw=json.dumps(data,sort_keys=True).encode();compressed=gzip.compress(raw,mtime=0)
-           print('\''E256_SERVICE_EVIDENCE_META'\'',json.dumps({'\''files'\'':len(data),'\''raw_bytes'\'':len(raw),'\''gzip_bytes'\'':len(compressed),'\''raw_sha256'\'':hashlib.sha256(raw).hexdigest()}),flush=True)
-           print('\''E256_SERVICE_EVIDENCE_B64_BEGIN'\'',flush=True)
-           text=base64.b64encode(compressed).decode()
-           for i in range(0,len(text),60000):print(text[i:i+60000],flush=True)
-           print('\''E256_SERVICE_EVIDENCE_B64_END'\'',flush=True)
-          print('\''E256_STATUS3_END'\'',flush=True)
-          E256_STATUS'
+          E256_LOGITS'
