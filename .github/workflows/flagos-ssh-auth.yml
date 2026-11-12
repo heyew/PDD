@@ -1,4 +1,4 @@
-name: FlagOS SSH identity probe
+name: FlagOS SSH environment probe
 
 on:
   push:
@@ -16,7 +16,7 @@ jobs:
     env:
       FLAGOS_SSH_KEY: ${{ secrets.a123 }}
     steps:
-      - name: Read-only remote SSH identity probe
+      - name: Read-only remote system and accelerator inventory
         shell: bash
         run: |
           set -euo pipefail
@@ -36,4 +36,13 @@ jobs:
             -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$HOME/.ssh/known_hosts" \
             -o ConnectTimeout=8 -o LogLevel=ERROR \
             lab_inst_01M65FEWSPNR8MP3DS4KNYDQ2C@ssh.flagos.io \
-            'printf "REMOTE_LOGIN_OK\n"; id -un; hostname; pwd'
+            'printf "ROUND2_ENV_START\n"
+             printf "USER: "; id -un
+             printf "KERNEL: "; uname -srm
+             printf "OS: "; if test -r /etc/os-release; then grep -E "^(PRETTY_NAME)=" /etc/os-release; else echo unknown; fi
+             printf "PYTHON: "; if command -v python3 >/dev/null 2>&1; then python3 --version; else echo not_found; fi
+             printf "CUDA_COMPILER: "; if command -v nvcc >/dev/null 2>&1; then nvcc --version | tail -n 1; else echo not_found; fi
+             printf "NVIDIA_GPU:\n"; if command -v nvidia-smi >/dev/null 2>&1; then timeout 12 nvidia-smi -L || true; else echo not_found; fi
+             printf "NPU:\n"; if command -v npu-smi >/dev/null 2>&1; then timeout 12 npu-smi info -l || true; else echo not_found; fi
+             printf "ROCM_GPU:\n"; if command -v rocm-smi >/dev/null 2>&1; then timeout 12 rocm-smi --showproductname || true; else echo not_found; fi
+             printf "ROUND2_ENV_END\n"'
