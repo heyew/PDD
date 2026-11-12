@@ -16,7 +16,7 @@ jobs:
     env:
       FLAGOS_SSH_KEY: ${{ secrets.a123 }}
     steps:
-      - name: Audit completed row W4 logits and provenance
+      - name: Read available CoreX hotspot profiling events
         shell: bash
         run: |
           set -euo pipefail
@@ -37,62 +37,59 @@ jobs:
             -o ConnectTimeout=8 -o LogLevel=ERROR \
             lab_inst_01M65FEWSPNR8MP3DS4KNYDQ2C@ssh.flagos.io \
             'python3 - <<'\''PY'\''
-          """Read-only audit of a completed owned P2 run; emits bounded evidence only."""
+          """Read-only SDK inventory; no model, kernel launch, or production mutation."""
+          from ctypes import CDLL, byref, c_int, c_size_t, c_uint, create_string_buffer, sizeof
           from pathlib import Path
-          import base64
-          import gzip
-          import hashlib
           import json
-          import numpy as np
+          import subprocess
           
-          root = Path('\''/root/e245/p2-row-a3'\'')
-          cfg = json.loads((root / '\''cases.json'\'').read_text())
-          events = [json.loads(s) for s in (root / '\''events.jsonl'\'').read_text().splitlines()]
-          index = {(e['\''label'\''], e['\''case_id'\''], e['\''step'\'']): e for e in events if e['\''stage'\''] == '\''logits'\''}
-          assert len(index) == 3 * 8 * 17
-          print('\''P2_READ_AUDIT_BEGIN'\'', flush=True)
-          for name in ('\''weights.json'\'', '\''cases.json'\'', '\''events.jsonl'\''):
-              payload = (root / name).read_bytes()
-              print('\''AUDIT_FILE'\'', json.dumps(dict(path=str(root / name), size=len(payload),
-                  sha256=hashlib.sha256(payload).hexdigest(), encoding='\''base64+gzip'\'',
-                  data=base64.b64encode(gzip.compress(payload, mtime=0)).decode())), flush=True)
-          manifest = []
-          for p in sorted((root / '\''logits'\'').glob('\''*.npy'\'')):
-              data = p.read_bytes()
-              manifest.append(dict(name=p.name, size=len(data), sha256=hashlib.sha256(data).hexdigest()))
-          records = []
-          control_exact = True
-          for c in cfg['\''cases'\'']:
-              for step in range(17):
-                  a, repeat, b = [np.load(root / '\''logits'\'' / index[(label, c['\''case_id'\''], step)]['\''filename'\''], allow_pickle=False)
-                                  for label in ('\''w8a'\'', '\''w8b'\'', '\''row'\'')]
-                  assert a.dtype == b.dtype == repeat.dtype == np.float32
-                  assert a.shape == b.shape == repeat.shape == (130560,)
-                  assert np.isfinite(a).all() and np.isfinite(b).all()
-                  control_exact &= bool(np.array_equal(a.view(np.uint32), repeat.view(np.uint32)))
-                  # Independent stable log-normalizer, separate from the service driver'\''s scorer.
-                  a, b = a.astype(np.float64), b.astype(np.float64)
-                  za = float(a.max() + np.log(np.exp(a - a.max()).sum()))
-                  zb = float(b.max() + np.log(np.exp(b - b.max()).sum()))
-                  pa = np.exp(a - za)
-                  target = c['\''target_ids'\''][step]
-                  records.append(dict(case_id=c['\''case_id'\''], step=step,
-                      kl=float(np.dot(pa, (a - b) + (zb - za))),
-                      delta_nll=float((a[target] - b[target]) + (zb - za)),
-                      top1_same=bool(a.argmax() == b.argmax())))
-          decode = [r for r in records if r['\''step'\''] > 0]
-          assert len(decode) == 128
-          audit = dict(scope='\''INDEPENDENT_READ_ONLY_VOCAB_LEVEL_RECOMPUTATION'\'',
-              original_result_sha256=hashlib.sha256((root / '\''result.json'\'').read_bytes()).hexdigest(),
-              w8_repeat_all_136_positions_bitwise=control_exact,
-              unique_decode_positions=128, logit_files=len(manifest),
-              mean_kl=float(np.mean([r['\''kl'\''] for r in decode])),
-              mean_delta_nll=float(np.mean([r['\''delta_nll'\''] for r in decode])),
-              top1_same_count=sum(r['\''top1_same'\''] for r in decode),
-              max_history_delta_nll=max(float(np.mean([r['\''delta_nll'\''] for r in decode if r['\''case_id'\'']==c['\''case_id'\'']])) for c in cfg['\''cases'\'']),
-              records=records, raw_logit_manifest=manifest,
-              raw_logits_remain_on_card=True, raw_logits_in_download_bundle=False)
-          print('\''P2_AUDIT_JSON'\'', json.dumps(audit), flush=True)
-          print('\''P2_READ_AUDIT_END'\'', flush=True)
+          print('\''E252_INVENTORY_BEGIN'\'', flush=True)
+          used = subprocess.check_output(['\''/usr/local/corex/bin/ixsmi'\'', '\''--query-gpu=memory.used'\'', '\''--format=csv,noheader'\''], text=True).strip()
+          print('\''GPU_MEMORY_USED'\'', used, flush=True)
+          print('\''NEXT_DIRS'\'', json.dumps({str(i): Path('\''/root'\'',f'\''e{i}'\'').exists() for i in range(252,257)}), flush=True)
+          print('\''HOST_MEMORY'\'', subprocess.check_output(['\''free'\'','\''-m'\''],text=True).strip(), flush=True)
+          assert int(used.split()[0]) < 256, '\''Another GPU workload is active; no profiling context created'\''
+          
+          def attributes(getter, identifier):
+              fields = []
+              for attr in (0,1,2):
+                  buf = create_string_buffer(2048); length = c_size_t(sizeof(buf))
+                  code = getter(c_uint(identifier), attr, byref(length), buf)
+                  fields.append(buf.value.decode(errors='\''replace'\'') if code == 0 else None)
+              return dict(id=int(identifier), name=fields[0], description=fields[1], detail=fields[2])
+          
+          driver, api = CDLL('\''libcuda.so.1'\''), CDLL('\''libcupti.so'\'')
+          assert driver.cuInit(0) == 0
+          dev = c_int(); assert driver.cuDeviceGet(byref(dev),0) == 0
+          count = c_uint(); assert api.cuptiDeviceGetNumMetrics(dev,byref(count)) == 0
+          ids = (c_uint*count.value)(); size = c_size_t(sizeof(ids))
+          assert api.cuptiDeviceEnumMetrics(dev,byref(size),ids) == 0
+          metrics=[]
+          for identifier in ids[:size.value//sizeof(c_uint)]:
+              item=attributes(api.cuptiMetricGetAttribute,identifier)
+              if not (item['\''name'\''].startswith(('\''issue_stall_reason_'\'', '\''active_warps_'\'', '\''selected_warps_'\'', '\''eligible_warps_'\'', '\''stalled_warps_'\''))
+                 or item['\''name'\''] in ('\''multiprocessor_activity'\'','\''ns_scheduler_unit_util'\'','\''alu_function_unit_util'\'','\''load_store_function_unit_util'\'',
+                     '\''ipc'\'','\''matrix_inst'\'','\''sfu_inst'\'','\''shared_load_transactions_per_request'\'','\''shared_load_throughput'\'','\''llc_mem_req'\'','\''llc_hit_rate'\'')):
+                  continue
+              ec=c_uint(); assert api.cuptiMetricGetNumEvents(c_uint(identifier),byref(ec)) == 0
+              es=(c_uint*ec.value)(); n=c_size_t(sizeof(es)); assert api.cuptiMetricEnumEvents(c_uint(identifier),byref(n),es)==0
+              item['\''events'\'']=[attributes(api.cuptiEventGetAttribute,e) for e in es[:n.value//sizeof(c_uint)]]
+              for attr,name in ((4,'\''value_kind'\''),(5,'\''evaluation_mode'\'')):
+                  value=c_int();n=c_size_t(sizeof(value));rc=api.cuptiMetricGetAttribute(c_uint(identifier),attr,byref(n),byref(value))
+                  item[name]=dict(rc=rc,value=value.value)
+              metrics.append(item)
+          print('\''METRICS_JSON'\'',json.dumps(dict(count=count.value,selected=metrics)),flush=True)
+          
+          for directory in ('\''/usr/local/corex/include'\'','\''/usr/local/corex/extras/CUPTI/include'\''):
+              for filename in ('\''cupti_metrics.h'\'','\''cupti_events.h'\''):
+                  p=Path(directory,filename)
+                  if not p.is_file():continue
+                  lines=p.read_text(errors='\''replace'\'').splitlines(); selected=set()
+                  patterns=('\''CUpti_MetricValueKind'\'','\''CUpti_MetricValue;'\'','\''cuptiMetricGetValue('\'', '\''cuptiMetricGetValue2('\'',
+                            '\''CUPTI_METRIC_ATTR_VALUE_KIND'\'','\''CUpti_EventGroupAttribute'\'','\''cuptiEventGroupReadEvent('\'')
+                  for i,line in enumerate(lines):
+                      if any(s in line for s in patterns): selected.update(range(max(0,i-24), min(len(lines),i+20)))
+                  print('\''SDK_HEADER'\'',json.dumps(dict(path=str(p),lines=[[i+1,lines[i]] for i in sorted(selected)])),flush=True)
+          print('\''E252_INVENTORY_END'\'',flush=True)
           
           PY'
