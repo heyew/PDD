@@ -16,7 +16,7 @@ jobs:
     env:
       FLAGOS_SSH_KEY: ${{ secrets.a123 }}
     steps:
-      - name: Read-only remote system and accelerator inventory
+      - name: Read-only FlagOS project and GPU preflight
         shell: bash
         run: |
           set -euo pipefail
@@ -36,13 +36,43 @@ jobs:
             -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$HOME/.ssh/known_hosts" \
             -o ConnectTimeout=8 -o LogLevel=ERROR \
             lab_inst_01M65FEWSPNR8MP3DS4KNYDQ2C@ssh.flagos.io \
-            'printf "ROUND2_ENV_START\n"
-             printf "USER: "; id -un
-             printf "KERNEL: "; uname -srm
-             printf "OS: "; if test -r /etc/os-release; then grep -E "^(PRETTY_NAME)=" /etc/os-release; else echo unknown; fi
-             printf "PYTHON: "; if command -v python3 >/dev/null 2>&1; then python3 --version; else echo not_found; fi
-             printf "CUDA_COMPILER: "; if command -v nvcc >/dev/null 2>&1; then nvcc --version | tail -n 1; else echo not_found; fi
-             printf "NVIDIA_GPU:\n"; if command -v nvidia-smi >/dev/null 2>&1; then timeout 12 nvidia-smi -L || true; else echo not_found; fi
-             printf "NPU:\n"; if command -v npu-smi >/dev/null 2>&1; then timeout 12 npu-smi info -l || true; else echo not_found; fi
-             printf "ROCM_GPU:\n"; if command -v rocm-smi >/dev/null 2>&1; then timeout 12 rocm-smi --showproductname || true; else echo not_found; fi
-             printf "ROUND2_ENV_END\n"'
+            'set -eu
+          printf "FLAGOS_PREFLIGHT_V1_BEGIN\n"
+          id -un
+          pwd
+          uname -srm
+          python3 --version
+          python3 - <<'\''PY'\''
+          import pathlib, shutil, subprocess, json, importlib.util, re
+          for name in ("ixsmi","nvidia-smi"):
+              exe=shutil.which(name)
+              if not exe and name=="ixsmi":
+                  p=pathlib.Path("/usr/local/corex/bin/ixsmi")
+                  if p.is_file(): exe=str(p)
+              print("ACCELERATOR_TOOL",name,exe,flush=True)
+              if exe:
+                  p=subprocess.run([exe],stdout=subprocess.PIPE,stderr=subprocess.STDOUT,text=True,timeout=12)
+                  print(p.stdout[:16000],flush=True)
+          for name in ("torch","triton","flag_gems","vllm","vllm_fl"):
+              try:
+                  spec=importlib.util.find_spec(name)
+                  print("PYTHON_MODULE",name,None if spec is None else spec.origin,flush=True)
+              except Exception as e:
+                  print("PYTHON_MODULE_ERROR",name,type(e).__name__,flush=True)
+          for base in ("/root","/workspace","/data","/mnt","/opt"):
+              p=pathlib.Path(base)
+              if not p.is_dir(): continue
+              names=sorted(x.name for x in p.iterdir() if not x.name.startswith(".") and (re.match(r"e[0-9]{3}",x.name) or any(k in x.name.lower() for k in ("flag","gems","vllm","minicpm","model","project","competition"))))
+              print("PROJECT_PATHS",base,json.dumps(names,ensure_ascii=False),flush=True)
+              for name in names:
+                  child=p/name
+                  if child.is_dir() and not re.match(r"e[0-9]{3}",name):
+                      for suffix in ("experiments/CURRENT.md","CURRENT.md"):
+                          candidate=child/suffix
+                          if candidate.is_file():
+                              print("CURRENT_PATH",str(candidate),flush=True)
+          p=subprocess.run(["ps","-eo","pid,comm"],stdout=subprocess.PIPE,text=True,check=True)
+          lines=[line for line in p.stdout.splitlines() if any(s in line.lower() for s in ("python","vllm","triton","ixsmi"))]
+          print("COMPUTE_PROCESS_NAMES",json.dumps(lines),flush=True)
+          PY
+          printf "FLAGOS_PREFLIGHT_V1_END\n"'
