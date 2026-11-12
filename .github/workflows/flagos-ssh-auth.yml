@@ -16,7 +16,7 @@ jobs:
     env:
       FLAGOS_SSH_KEY: ${{ secrets.a123 }}
     steps:
-      - name: Audit E256 baseline including missing compatibility files
+      - name: Build exact official baseline and run E256 full graph
         shell: bash
         run: |
           set -euo pipefail
@@ -36,21 +36,48 @@ jobs:
             -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$HOME/.ssh/known_hosts" \
             -o ConnectTimeout=8 -o LogLevel=ERROR \
             lab_inst_01M65FEWSPNR8MP3DS4KNYDQ2C@ssh.flagos.io \
-            'python3 - <<'\''E256_AUDIT2'\''
-          import base64,gzip,hashlib,json
+            'python3 - <<'\''E256_RESTART'\''
+          import base64,gzip,hashlib,json,runpy,shutil,subprocess,sys,time
           from pathlib import Path
-          root=Path('\''/root/e214/candidate-a1'\'')
-          pins=json.loads(Path('\''/root/e256/bundle-a1/validation/source_pins.json'\'').read_text())['\''files'\'']
-          changed={}
+          root=Path('\''/root/e256'\'')
+          used=subprocess.check_output(['\''/usr/local/corex/bin/ixsmi'\'','\''--query-gpu=memory.used'\'','\''--format=csv,noheader'\''],text=True).strip()
+          assert int(used.split()[0])<256, ('\''GPU occupied; no process stopped'\'',used)
+          diff=json.loads((root/'\''baseline_differences.json'\'').read_text())
+          assert set(diff)=={'\''plugin/vllm_fl/__init__.py'\'','\''plugin/vllm_fl/patches/bytelevel.py'\''}
+          assert diff['\''plugin/vllm_fl/__init__.py'\'']['\''actual'\'']=='\''61a446abcb0c012a1260095f252ca467639ad5fe1a2c2af397276533a7f18acd'\''
+          assert diff['\''plugin/vllm_fl/patches/bytelevel.py'\'']['\''actual'\''] is None
+          base=root/'\''baseline-official'\''
+          assert not base.exists()
+          builder=Path('\''/root/e241/build_bytelevel.py'\'')
+          assert hashlib.sha256(builder.read_bytes()).hexdigest()=='\''ba932ca96489b6932ba044758c5f7cae842bec4bcefa90813665eb627cafb9f6'\''
+          base.mkdir()
+          shutil.copytree('\''/root/e214/candidate-a1/gems'\'',base/'\''gems'\'',ignore=shutil.ignore_patterns('\''__pycache__'\'','\''*.pyc'\''))
+          registration=runpy.run_path(str(builder))['\''build'\''](Path('\''/root/e214/candidate-a1/plugin'\''),Path('\''/root/e241/bytelevel.py'\''),base/'\''plugin'\'')
+          pins=json.loads((root/'\''bundle-a1/validation/source_pins.json'\'').read_text())['\''files'\'']
           for name,wanted in pins.items():
-           p=root/name
-           if not p.is_file():
-            changed[name]={'\''expected'\'':wanted,'\''actual'\'':None,'\''text'\'':None}
-            continue
-           b=p.read_bytes(); got=hashlib.sha256(b).hexdigest()
-           if got!=wanted: changed[name]={'\''expected'\'':wanted,'\''actual'\'':got,'\''bytes'\'':len(b),'\''text'\'':b.decode()}
-          raw=json.dumps(changed).encode()
-          Path('\''/root/e256/baseline_differences.json'\'').write_bytes(raw)
-          print('\''E256_BASELINE_DIFF_SUMMARY '\''+json.dumps({n:{k:v for k,v in x.items() if k!='\''text'\''} for n,x in changed.items()}))
-          print('\''E256_BASELINE_DIFF_GZIP_B64 '\''+base64.b64encode(gzip.compress(raw,mtime=0)).decode())
-          E256_AUDIT2'
+           assert hashlib.sha256((base/name).read_bytes()).hexdigest()==wanted,name
+          (root/'\''baseline_official_receipt.json'\'').write_text(json.dumps({'\''base'\'':'\''/root/e214/candidate-a1'\'','\''builder_sha256'\'':hashlib.sha256(builder.read_bytes()).hexdigest(),'\''registration'\'':registration,'\''verified_files'\'':len(pins)},indent=2)+'\''\n'\'')
+          (root/'\''device_guard_a2.py'\'').write_bytes(base64.b64decode('\''IiIiT3duZWQtcHJvY2VzcyBoYXJkIGRlYWRsaW5lIGZvciBvbmUgaXNvbGF0ZWQgRTI1NiBkaWZmZXJlbnRpYWwgZXhlY3V0aW9uLiIiIgppbXBvcnQganNvbgppbXBvcnQgb3MKZnJvbSBwYXRobGliIGltcG9ydCBQYXRoCmltcG9ydCBzaWduYWwKaW1wb3J0IHN1YnByb2Nlc3MKaW1wb3J0IHN5cwppbXBvcnQgdGltZQppbXBvcnQgdHJhY2ViYWNrCgpyb290ID0gUGF0aChfX2ZpbGVfXykucmVzb2x2ZSgpLnBhcmVudApzdGFydCA9IHRpbWUubW9ub3RvbmljKCkKcmVzdWx0ID0geyJleHBlcmltZW50IjogIkUyNTYiLCAiYXR0ZW1wdCI6ICJhMiIsICJzdGF0dXMiOiAiU1RBUlRJTkcifQp0cnk6CiAgICBjb21tYW5kID0gW3N5cy5leGVjdXRhYmxlLCBzdHIocm9vdCAvICJidW5kbGUtYTEvdmFsaWRhdGlvbi9kaWZmZXJlbnRpYWwucHkiKSwKICAgICAgICAgICAgICAgIi0td29ya3NwYWNlIiwgc3RyKHJvb3QpLCAiLS1wcm9kdWN0aW9uLXJvb3QiLCAiL3Jvb3QvZTI1Ni9iYXNlbGluZS1vZmZpY2lhbCIsCiAgICAgICAgICAgICAgICItLXByb2JlLXNvdXJjZSIsICIvcm9vdC9lMjIzL3Byb2JlLnB5IiwgIi0tam9pbnQtc291cmNlIiwgIi9yb290L2UyMjcvam9pbnQucHkiLAogICAgICAgICAgICAgICAiLS1jYW5kaWRhdGUtbWFuaWZlc3QiLCBzdHIocm9vdCAvICJidW5kbGUtYTEvbWFuaWZlc3QuanNvbiIpLAogICAgICAgICAgICAgICAiLS1vdXQiLCBzdHIocm9vdCAvICJkZXZpY2UtYTIiKSwgIi0tcnVuLWRldmljZSIsICItLW1heC1ob3N0LXMiLCAiMTUwIl0KICAgIHdpdGggKHJvb3QgLyAiZGV2aWNlLWEyLmxvZyIpLm9wZW4oIndiIiwgYnVmZmVyaW5nPTApIGFzIGxvZzoKICAgICAgICBjaGlsZCA9IHN1YnByb2Nlc3MuUG9wZW4oY29tbWFuZCwgY3dkPXJvb3QsIHN0ZGluPXN1YnByb2Nlc3MuREVWTlVMTCwgc3Rkb3V0PWxvZywKICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgc3RkZXJyPXN1YnByb2Nlc3MuU1RET1VULCBzdGFydF9uZXdfc2Vzc2lvbj1UcnVlKQogICAgICAgIHJlc3VsdC51cGRhdGUoc3RhdHVzPSJSVU5OSU5HIiwgcGlkPWNoaWxkLnBpZCwgY29tbWFuZD1jb21tYW5kKQogICAgICAgIChyb290IC8gImd1YXJkLWEyLmpzb24iKS53cml0ZV90ZXh0KGpzb24uZHVtcHMocmVzdWx0LCBpbmRlbnQ9MikgKyAiXG4iKQogICAgICAgIHRyeToKICAgICAgICAgICAgcmMgPSBjaGlsZC53YWl0KHRpbWVvdXQ9MTY1KQogICAgICAgICAgICByZXN1bHQudXBkYXRlKHN0YXR1cz0iRklOSVNIRUQiLCByZXR1cm5jb2RlPXJjKQogICAgICAgIGV4Y2VwdCBzdWJwcm9jZXNzLlRpbWVvdXRFeHBpcmVkOgogICAgICAgICAgICBvcy5raWxscGcoY2hpbGQucGlkLCBzaWduYWwuU0lHVEVSTSkKICAgICAgICAgICAgdHJ5OiBjaGlsZC53YWl0KHRpbWVvdXQ9NSkKICAgICAgICAgICAgZXhjZXB0IHN1YnByb2Nlc3MuVGltZW91dEV4cGlyZWQ6CiAgICAgICAgICAgICAgICBvcy5raWxscGcoY2hpbGQucGlkLCBzaWduYWwuU0lHS0lMTCkKICAgICAgICAgICAgICAgIGNoaWxkLndhaXQodGltZW91dD01KQogICAgICAgICAgICByZXN1bHQudXBkYXRlKHN0YXR1cz0iVElNRU9VVCIsIHJldHVybmNvZGU9Y2hpbGQucmV0dXJuY29kZSkKZXhjZXB0IEJhc2VFeGNlcHRpb24gYXMgZXhjOgogICAgcmVzdWx0LnVwZGF0ZShzdGF0dXM9IkdVQVJEX0ZBSUxFRCIsIGVycm9yPXN0cihleGMpLCB0cmFjZWJhY2s9dHJhY2ViYWNrLmZvcm1hdF9leGMoKSkKZmluYWxseToKICAgIHJlc3VsdFsiZWxhcHNlZF9ob3N0X3MiXSA9IHRpbWUubW9ub3RvbmljKCkgLSBzdGFydAogICAgKHJvb3QgLyAiZG9uZS1hMi5qc29uIikud3JpdGVfdGV4dChqc29uLmR1bXBzKHJlc3VsdCwgaW5kZW50PTIpICsgIlxuIikK'\''))
+          log=(root/'\''guard-a2.log'\'').open('\''ab'\'',buffering=0)
+          p=subprocess.Popen([sys.executable,str(root/'\''device_guard_a2.py'\'')],cwd=root,stdin=subprocess.DEVNULL,stdout=log,stderr=subprocess.STDOUT,start_new_session=True)
+          print('\''E256_A2_LAUNCHED '\''+json.dumps({'\''guard_pid'\'':p.pid,'\''verified_files'\'':len(pins),'\''gpu_before'\'':used}),flush=True)
+          deadline=time.monotonic()+50
+          while not (root/'\''done-a2.json'\'').exists() and time.monotonic()<deadline:time.sleep(1)
+          for name in ('\''guard-a2.json'\'','\''done-a2.json'\''):
+              p=root/name
+              print(name+'\'' '\''+(p.read_text() if p.exists() else '\''RUNNING'\''))
+          p=root/'\''device-a2.log'\''
+          print('\''E256_LOG_TAIL\n'\''+(p.read_text(errors='\''replace'\'')[-14000:] if p.exists() else '\''NOT_READY'\''))
+          p=root/'\''device-a2/result.json'\''
+          if p.exists():
+              raw=p.read_bytes(); r=json.loads(raw)
+              summary={k:r.get(k) for k in ('\''status'\'','\''complete'\'','\''elapsed_host_s'\'','\''one_load_init_s'\'','\''failure'\'','\''device_preflight'\'')}
+              summary['\''scopes'\'']=[{'\''name'\'':s['\''name'\''],'\''cases'\'':{n:{k:c.get(k) for k in ('\''same_code_bitwise'\'','\''production_vs_reference_bitwise'\'','\''mean_saving_ms_per_step'\'','\''mean_ms_per_step'\'','\''paired_group_mean_saving_ms_per_step'\'','\''arms'\'')} for n,c in s['\''cases'\''].items()}} for s in r.get('\''scopes'\'',[])]
+              for scope in summary['\''scopes'\'']:
+                  for case in scope['\''cases'\''].values():
+                      for arm in (case.get('\''arms'\'') or {}).values():
+                          arm.pop('\''graph_identity'\'',None)
+              print('\''E256_RESULT_SUMMARY '\''+json.dumps(summary,allow_nan=False))
+              print('\''E256_RESULT_SHA256 '\''+hashlib.sha256(raw).hexdigest())
+          print('\''E256_GPU_MEMORY '\''+subprocess.check_output(['\''/usr/local/corex/bin/ixsmi'\'','\''--query-gpu=memory.used'\'','\''--format=csv,noheader'\''],text=True).strip())
+          E256_RESTART'
