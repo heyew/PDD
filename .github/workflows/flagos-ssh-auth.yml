@@ -16,7 +16,7 @@ jobs:
     env:
       FLAGOS_SSH_KEY: ${{ secrets.a123 }}
     steps:
-      - name: Read bounded E253 CPU encoder status
+      - name: Resume unchanged E253 CPU encoding within measured budget
         shell: bash
         run: |
           set -euo pipefail
@@ -38,21 +38,14 @@ jobs:
             lab_inst_01M65FEWSPNR8MP3DS4KNYDQ2C@ssh.flagos.io \
             'python3 - <<'\''PY'\''
           from pathlib import Path
-          import json,subprocess,hashlib,gzip,base64
+          import base64,gzip,hashlib,json,subprocess
           root=Path('\''/root/e253/quality'\'')
-          for name in ('\''encode_guard-a1.json'\'','\''encoded-block128-a1/manifest.json'\''):
-           p=root/name
-           if p.exists():
-            d=json.loads(p.read_text())
-            summary={k:d[k] for k in ('\''status'\'','\''complete'\'','\''elapsed_host_s'\'','\''returncode'\'','\''failure'\'','\''reason'\'','\''active_matrix'\'','\''last_budget_projection'\'','\''self_test'\'','\''attempts'\'','\''all_8_existing_32row_sentinels_bitwise'\'') if k in d}
-            if '\''files'\'' in d:summary.update(matrices=len(d['\''files'\'']),last_matrices=[{k:x[k] for k in ('\''layer'\'','\''role'\'','\''wall_matrix_s'\'','\''timings'\'','\''sentinel_equivalence'\'') if k in x} for x in d['\''files'\''][-2:]])
-            print('\''STATE '\''+name+'\'' '\''+json.dumps(summary))
-           if p.exists() and d.get('\''status'\'') in ('\''COMPLETE'\'','\''FAILED'\'','\''PAUSED_BUDGET'\'','\''TIMEOUT'\''):
-            b=p.read_bytes(); print('\''FILE_INFO '\''+json.dumps({'\''path'\'':name,'\''sha256'\'':hashlib.sha256(b).hexdigest(),'\''bytes'\'':len(b)}))
-            print('\''FILE_GZIP_B64 '\''+name+'\'' '\''+base64.b64encode(gzip.compress(b,mtime=0)).decode())
-          log=root/'\''encode-a1.log'\''
-          if log.exists():
-           print('\''LOG_TAIL_BEGIN'\'')
-           print('\''\n'\''.join(log.read_text(errors='\''replace'\'').splitlines()[-8:]))
-          print('\''GPU_MEMORY '\''+subprocess.check_output(['\''/usr/local/corex/bin/ixsmi'\'','\''--query-gpu=memory.used'\'','\''--format=csv,noheader'\''],text=True).strip())
+          assert json.loads((root/'\''encode_guard-a1.json'\'').read_text())['\''status'\'']=='\''PAUSED_BUDGET'\''
+          m=json.loads((root/'\''encoded-block128-a1/manifest.json'\'').read_text());assert m['\''status'\'']=='\''PAUSED_BUDGET'\'' and not m['\''complete'\'']
+          assert hashlib.sha256((root/'\''encode_all_cpu.py'\'').read_bytes()).hexdigest()=='\''5a3ee0c4546566f3781202b380c1540609387bad72c0247d5c381d68349644da'\''
+          b=gzip.decompress(base64.b64decode('\''H4sIAAAAAAACA5VW32/jNgx+91+h6cnGEl+bNduhgx96jXsolv5Am+6lKwTFZhKtsmVI8jXFsP99lGzHcZt1tzwkikRS5MePpCilNyWQAripNeTjZZ2vwZLz2weiwdQF/EqUFmtRckmMqnUGI5KpHMyI8DIna27BEK6B1GW24eUa8phSGqy0KkjF7UaKJRFFpbQlt/i3Odhws39gNnwy/Tlo//1pVNmtlelWRqzRhd2/ellplYHpz193SysK2K01z2DJs+cg0EpZkngvQsZWQgJjUYxBKvkNwiiuMIrSBsZiSMy5jsJe5xOhULqY2brmOh/zSex8pAE3BvCOEmV6rRi2wlgTRiNCFxthiNcV5ZpI7jAiXGrg+asDgXAEOVM6p+5abSHHO537caHQqipFFkZBporCYZ2QR4wS7UNWW76UmAljdfjGRy4ly6o6rl5pNAoIfuh4nPHKYnrHqrZ0qNWd8OM9cYNAiBLkAfkVQO7wHCq8l2u8QT5JlT0fTz4P5bV6GS+5zTaoRafHE/czHtuNQ8a4PyfNTsG3Y12XDhK/Ozlq9htq0qcmW4hMLjIbmkxVkNB0Mv2JIYHZxcN8zq5uZumcpdfnN7PL66/eS25rk9D7xdndwm95r3afFu6k/R0RDA40cz7gipnkZHr0RqUpDNbwOPmr5AWctqwOO0TcpqMbz9nyFYsmjKJ4A9tcrMFYzDL54LNS2usTUZKwS3SDQcNJl+3RIQrg5qqW8pl1edtx4+8oCIIcVsRwR/9T74CH85GC5JWBnG2UwYDp0wFWkjFpKesVbVGh0F4VvAi7YaZercQ2pL5eYpShUScdv2iBsha2NvSneV1UJvQWRhhnjhRMJhH5kdA/yj01DZXEkg77q1wcVr+2Afhg/NJ5QN7w0dWuVGsaxciUMqTbJSK0RC9BY4UmRxHBokSB0106so2QrvT6jhPfet0dPbKXPHG3OGZhnSd7krP092vk4OjD5DYMsjmSK8GrvRnQet/O/WJ287AYNYizEl6YwW2hymSha+i540GJ6yrHn7Dj+d3D9XXD/Eogq108Ma72tHrMPModlt1HZxh/o/fChQ3bSnB10GvBNoNqvzHHi0Ys3VYCB8vQpDLxs5CyWoc7f0Zti4/vL78u0rurYUW8c2qXm6FPx0dDvf/n1ne49tvlfB59jyfTodTB1Cwur1JMLKZGA3ZhT9E2Q/3G0I7mwgDpgtBa6ZBeiC1Ojt2cMXUF+psw2DRybDcSO7nHAbAf0zdkeaT9Rb7OdbYTODgDBx39E1aAWGH/agdipylWZDAKhyh3SmjbV75U2PRDr+Dbo+8J0QfwNZ5o1sLY2XukzQZ9ck+UopJgYe+w28Ljf6/HglstkCeJxBLvdd1rAe3iTO/2umbfdvne+0PNPdpHxpVTQn6Znr4PsI8AsaG3Zw/36Yx9eZh9TRc9uCANDHXbd0hj+Mi/yxq88CUX9nFHBF8jrmG8leiCRgk08Pnkvxw7v7m6naeLlAZteX3hBlK/xJ7kWijuNy5ivG8N/IAWOuKfBh9cc3F2OU9ndH8wrbiQ+Frx537k21ec+O4rxCujmDE3JhnDPGGt8zUk7k3ijkb9UzDZrWIcrBg8QwGXpJV75crhJPkHhaK5oSALAAA='\''));assert hashlib.sha256(b).hexdigest()=='\''fd818144cbab43772635e3135c0ba59579e516ea590ee203dbb6a41aabf4d443'\''
+          path=root/'\''encode_resume_guard.py'\'';assert not path.exists();path.write_bytes(b)
+          with (root/'\''encode-supervisor-a2.log'\'').open('\''xb'\'',buffering=0) as log:
+           child=subprocess.Popen(['\''python3'\'',str(path)],cwd=root,stdin=subprocess.DEVNULL,stdout=log,stderr=subprocess.STDOUT,start_new_session=True)
+          print('\''LAUNCHED '\''+json.dumps({'\''guard_pid'\'':child.pid,'\''completed_matrices_reused'\'':len(m['\''files'\'']),'\''cpu_budget_s'\'':420,'\''same_encoder_source'\'':True,'\''guard_sha256'\'':'\''fd818144cbab43772635e3135c0ba59579e516ea590ee203dbb6a41aabf4d443'\''}),flush=True)
           PY'
