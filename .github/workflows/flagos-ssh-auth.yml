@@ -16,7 +16,7 @@ jobs:
     env:
       FLAGOS_SSH_KEY: ${{ secrets.a123 }}
     steps:
-      - name: Read E253 encoding progress and compiled operator evidence
+      - name: Read E253 derived weights completion and quality startup
         shell: bash
         run: |
           set -euo pipefail
@@ -39,23 +39,19 @@ jobs:
             'python3 - <<'\''PY'\''
           from pathlib import Path
           import json,hashlib,gzip,base64,subprocess
-          q=Path('\''/root/e253/quality'\'')
-          for rel in ('\''encode_guard-a2.json'\'','\''encoded-block128-a1/manifest.json'\'','\''p2/guard_state.json'\'','\''p2-a1/result.json'\''):
+          q=Path('\''/root/e253/quality'\'');bundle={};summary={}
+          for rel in ('\''encode_guard-a2.json'\'','\''encoded-block128-a1/manifest.json'\'','\''p2/guard_state.json'\'','\''p2/done.json'\'','\''p2-a1/result.json'\'','\''p2-a1/phase.json'\''):
            p=q/rel
            if not p.exists():continue
-           d=json.loads(p.read_text());s={k:d[k] for k in ('\''status'\'','\''complete'\'','\''decision'\'','\''failure'\'','\''error'\'','\''returncode'\'','\''active_matrix'\'','\''last_budget_projection'\'','\''timings'\'','\''arms'\'','\''screen_gate'\'','\''wait_encoder_actual_s'\'','\''driver_elapsed_s'\'','\''elapsed_host_s'\'','\''attempts'\'') if k in d}
-           if '\''files'\'' in d:s['\''matrices'\'']=len(d['\''files'\'']);s['\''last_matrix'\'']=d['\''files'\''][-1] if d['\''files'\''] else None
-           print('\''STATE '\''+rel+'\'' '\''+json.dumps(s))
-           if d.get('\''status'\'')=='\''COMPLETE'\'' or d.get('\''complete'\'') is True:
-            b=p.read_bytes();print('\''FILE_INFO '\''+json.dumps({'\''path'\'':rel,'\''sha256'\'':hashlib.sha256(b).hexdigest(),'\''bytes'\'':len(b)}));print('\''FILE_GZIP_B64 '\''+rel+'\'' '\''+base64.b64encode(gzip.compress(b,mtime=0)).decode())
+           b=p.read_bytes();d=json.loads(b);bundle[rel]={'\''text'\'':b.decode(),'\''sha256'\'':hashlib.sha256(b).hexdigest()}
+           s={k:d[k] for k in ('\''status'\'','\''complete'\'','\''decision'\'','\''failure'\'','\''error'\'','\''returncode'\'','\''active_matrix'\'','\''last_budget_projection'\'','\''timings'\'','\''arms'\'','\''screen_gate'\'','\''wait_encoder_actual_s'\'','\''driver_elapsed_s'\'','\''elapsed_host_s'\'','\''attempts'\'','\''all_8_existing_32row_sentinels_bitwise'\'','\''gpu_memory_before_service'\'','\''gpu_memory_after'\'','\''stage'\'','\''arm'\'','\''label'\'') if k in d}
+           if '\''files'\'' in d:s['\''matrices'\'']=len(d['\''files'\''])
+           if '\''quality'\'' in d:s['\''quality_decode'\'']=d['\''quality'\'']['\''decode'\''];s['\''quality_prefill'\'']=d['\''quality'\'']['\''prefill'\'']
+           summary[rel]=s
+          print('\''SUMMARY '\''+json.dumps(summary))
+          b=json.dumps(bundle,sort_keys=True).encode();print('\''BUNDLE_INFO '\''+json.dumps({'\''files'\'':len(bundle),'\''bytes'\'':len(b),'\''sha256'\'':hashlib.sha256(b).hexdigest()}));print('\''BUNDLE_GZIP_B64 '\''+base64.b64encode(gzip.compress(b,mtime=0)).decode())
           for rel in ('\''encode-a2.log'\'','\''p2/driver-a1.log'\'','\''p2-a1/serve.log'\''):
            p=q/rel
-           if p.exists():print('\''LOG_TAIL '\''+rel+'\''\\n'\''+'\''\\n'\''.join(p.read_text(errors='\''replace'\'').splitlines()[-10:]))
-          base=Path('\''/root/e253/attempt2/p0-a2'\'');isa={}
-          for name in ('\''packed_gu.isa'\'','\''packed_down.isa'\'','\''w8_gu.isa'\'','\''w8_down.isa'\''):
-           p=base/name
-           if p.exists():
-            b=p.read_bytes();isa[name]={'\''text'\'':b.decode(),'\''sha256'\'':hashlib.sha256(b).hexdigest()}
-          b=json.dumps(isa,sort_keys=True).encode();print('\''ISA_BUNDLE_INFO '\''+json.dumps({'\''files'\'':len(isa),'\''bytes'\'':len(b),'\''sha256'\'':hashlib.sha256(b).hexdigest()}));print('\''ISA_BUNDLE_GZIP_B64 '\''+base64.b64encode(gzip.compress(b,mtime=0)).decode())
+           if p.exists():print('\''LOG_TAIL '\''+rel+'\''\\n'\''+'\''\\n'\''.join(p.read_text(errors='\''replace'\'').splitlines()[-14:]))
           print('\''GPU_MEMORY '\''+subprocess.check_output(['\''/usr/local/corex/bin/ixsmi'\'','\''--query-gpu=memory.used'\'','\''--format=csv,noheader'\''],text=True).strip())
           PY'
