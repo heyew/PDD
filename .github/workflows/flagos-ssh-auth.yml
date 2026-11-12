@@ -16,7 +16,7 @@ jobs:
     env:
       FLAGOS_SSH_KEY: ${{ secrets.a123 }}
     steps:
-      - name: Read E241 E242 E243 numerical and performance evidence
+      - name: Inspect frozen GPU harness and native profiling tools
         shell: bash
         run: |
           set -euo pipefail
@@ -37,26 +37,30 @@ jobs:
             -o ConnectTimeout=8 -o LogLevel=ERROR \
             lab_inst_01M65FEWSPNR8MP3DS4KNYDQ2C@ssh.flagos.io \
             'set -eu
-          printf "FLAGOS_RECENT_EVIDENCE_V3_BEGIN\n"
+          printf "FLAGOS_HARNESS_AUDIT_V4_BEGIN\n"
           python3 - <<'\''PY'\''
-          import pathlib,json,hashlib
-          for base in ("/root/e242/a1","/root/e243/a1","/root/e243/a2","/root/e241/schedule_a4"):
+          import pathlib,hashlib,json,shutil
+          for base in ("/root/e223","/root/e227","/root/e228","/usr/local/corex/bin","/usr/local/corex/lib64","/usr/local/corex/extras"):
               p=pathlib.Path(base)
               if not p.is_dir(): continue
-              files=[q for q in sorted(p.rglob("*")) if q.is_file() and "__pycache__" not in str(q)]
-              print("EVIDENCE_FILES",base,json.dumps([{"name":str(q.relative_to(p)),"bytes":q.stat().st_size} for q in files[:100]]),flush=True)
-              for q in files:
-                  if q.suffix==".json" and q.stat().st_size<150000 and any(k in q.name.lower() for k in ("result","summary","resource","timing","status")):
-                      print("EVIDENCE_JSON",json.dumps({"path":str(q),"data":json.loads(q.read_text())}),flush=True)
-          for name in ("/root/e241/full_result.json","/root/e214/candidate-a1/build.json"):
-              p=pathlib.Path(name)
-              if p.is_file(): print("EVIDENCE_JSON",json.dumps({"path":str(p),"data":json.loads(p.read_text())}),flush=True)
-          for name in ("/root/e241/sitecustomize.py","/root/e241/run_schedule.py","/root/e243/probe_kv.py"):
-              p=pathlib.Path(name)
-              if p.is_file():
-                  print("EVIDENCE_SOURCE",json.dumps({"path":str(p),"content":p.read_text()}),flush=True)
-          for name in ("_native_pair_mlp.py","_group_a8_mlp.py","w8a8.py","crosslayer.py","_cta_native_merge.py"):
+              names=[x.name for x in sorted(p.iterdir()) if not x.name.startswith(".")]
+              if "corex" in base: names=[x for x in names if any(k in x.lower() for k in ("prof","cupti","trace","smi","gdb"))]
+              print("TOOL_OR_HARNESS_FILES",base,json.dumps(names[:100]),flush=True)
+          for name in ("_window_native.py","_kv_pipeline.py","_cta_native_merge.py"):
               p=pathlib.Path("/root/e214/candidate-a1/gems/src/flag_gems/fused/minicpm")/name
-              if p.is_file(): print("SOURCE_SHA256",str(p),hashlib.sha256(p.read_bytes()).hexdigest(),flush=True)
+              print("SOURCE_SHA256",str(p),hashlib.sha256(p.read_bytes()).hexdigest(),flush=True)
+          for name in ("/root/e223/probe.py","/root/e227/joint.py","/root/e228/mbu.py"):
+              p=pathlib.Path(name)
+              if p.is_file(): print("HARNESS_SOURCE",json.dumps({"path":str(p),"sha256":hashlib.sha256(p.read_bytes()).hexdigest(),"content":p.read_text()}),flush=True)
+          for name in ("warm1","warm2"):
+              p=pathlib.Path("/root/e241/schedule_a4")/(name+"_steps.jsonl")
+              if not p.is_file(): continue
+              rows=[json.loads(x) for x in p.read_text().splitlines()]
+              hist={}
+              for v in rows:
+                  shape=(len(v),sum(int(x[3]) for x in v))
+                  hist[str(shape)]=hist.get(str(shape),0)+1
+              print("SCHEDULE_SHAPES",name,json.dumps(hist),flush=True)
+          print("E244_EXISTS",pathlib.Path("/root/e244").exists(),flush=True)
           PY
-          printf "FLAGOS_RECENT_EVIDENCE_V3_END\n"'
+          printf "FLAGOS_HARNESS_AUDIT_V4_END\n"'
