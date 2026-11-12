@@ -16,7 +16,7 @@ jobs:
     env:
       FLAGOS_SSH_KEY: ${{ secrets.a123 }}
     steps:
-      - name: Read lifecycle closure and queued isolated experiment evidence
+      - name: Read service client completion and serialized diagnostic results
         shell: bash
         run: |
           set -euo pipefail
@@ -39,11 +39,11 @@ jobs:
             'python3 - <<'\''PY'\''
           import json,subprocess
           from pathlib import Path
-          print("FLAGOS_E244_SERIAL_STATUS_BEGIN",flush=True)
+          print("FLAGOS_E244_SERIAL_STATUS_V3_BEGIN",flush=True)
           for name in ["/root/e244/ledger_status.json","/root/e244/ledger_a1/stage.json","/root/e244/ledger_a1/rounds.json","/root/e244/ledger_a1/observer-error.json","/root/e244/ledger_a1/observer_overhead.json","/root/e244/ledger_a1/ledger.json","/root/e247/followups_status.json","/root/e247/cap_b1/result.json","/root/e245/prefetch-tiny-a1/result.json","/root/e245/prefetch-full-a1/result.json"]:
               p=Path(name)
               if p.is_file():print("RESULT_JSON",json.dumps({"path":name,"data":json.loads(p.read_text())}),flush=True)
-          for name in ["/root/e244/driver.log","/root/e247/cap_b.log","/root/e245/prefetch_tiny.log","/root/e245/prefetch_full.log"]:
+          for name in ["/root/e244/driver.log","/root/e247/cap_b.log","/root/e245/prefetch_tiny.log","/root/e245/prefetch_full.log","/root/e244/ledger_a1/cold.log","/root/e244/ledger_a1/warm_off_before.log","/root/e244/ledger_a1/warm1.log","/root/e244/ledger_a1/warm2.log","/root/e244/ledger_a1/warm_off_after.log"]:
               p=Path(name)
               if p.is_file():print("LOG_TAIL",json.dumps({"path":name,"lines":p.read_text(errors="replace").splitlines()[-18:]}),flush=True)
           p=Path("/root/e244/ledger_a1/serve.log")
@@ -52,5 +52,5 @@ jobs:
               selected=[x for x in lines if any(word in x for word in ("Error","ERROR","Exception","Traceback","Application startup complete"))]
               print("SERVICE_ERRORS_OR_READY",json.dumps(selected[-12:]),flush=True)
           print("CARD_MEMORY",subprocess.check_output(["/usr/local/corex/bin/ixsmi","--query-gpu=memory.used","--format=csv,noheader"],text=True).strip(),flush=True)
-          print("FLAGOS_E244_SERIAL_STATUS_END",flush=True)
+          print("FLAGOS_E244_SERIAL_STATUS_V3_END",flush=True)
           PY'
