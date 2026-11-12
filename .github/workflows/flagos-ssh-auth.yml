@@ -16,7 +16,7 @@ jobs:
     env:
       FLAGOS_SSH_KEY: ${{ secrets.a123 }}
     steps:
-      - name: Read E253 capture stage and precheck
+      - name: Read E253 capture and CPU transition
         shell: bash
         run: |
           set -euo pipefail
@@ -36,20 +36,28 @@ jobs:
             -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$HOME/.ssh/known_hosts" \
             -o ConnectTimeout=8 -o LogLevel=ERROR \
             lab_inst_01M65FEWSPNR8MP3DS4KNYDQ2C@ssh.flagos.io \
-            'python3 - <<'\''E253STATUS'\''
+            'python3 - <<'\''E253STATUS2'\''
           from pathlib import Path
-          import json, gzip, base64, hashlib, subprocess
+          import json, gzip, base64, hashlib, subprocess, time
           r=Path('\''/root/e253/quality'\'')
+          deadline=time.monotonic()+40
+          while time.monotonic()<deadline:
+           p=r/'\''guard_state.json'\''
+           state=json.loads(p.read_text()) if p.exists() else {}
+           if state.get('\''phase'\'')=='\''feedback'\'' or (r/'\''done.json'\'').exists():break
+           time.sleep(1)
           bundle={}
           for name in ('\''guard_state.json'\'','\''done.json'\'','\''capture-a1/result.json'\'','\''capture-a1/copy_precheck/result.json'\'','\''feedback-a1/result.json'\''):
            p=r/name
            if p.exists():bundle[name]=json.loads(p.read_text())
-          print('\''STATUS '\''+json.dumps({n:{k:v.get(k) for k in ('\''status'\'','\''phase'\'','\''decision'\'','\''complete'\'','\''elapsed_host_s'\'','\''service_elapsed_s'\'','\''error'\'','\''failure'\'','\''timings'\'') if k in v} for n,v in bundle.items()},sort_keys=True))
-          for name in ('\''capture.log'\'','\''capture-a1/copy_precheck.log'\'','\''capture-a1/serve.log'\'','\''feedback.log'\''):
+          print('\''STATUS '\''+json.dumps({n:{k:v.get(k) for k in ('\''status'\'','\''phase'\'','\''decision'\'','\''complete'\'','\''elapsed_host_s'\'','\''service_elapsed_s'\'','\''error'\'','\''failure'\'','\''timings'\'','\''partitions'\'','\''active_matrix'\'') if k in v} for n,v in bundle.items()},sort_keys=True))
+          for name in ('\''capture.log'\'','\''capture-a1/serve.log'\'','\''feedback.log'\''):
            p=r/name
-           if p.exists():print('\''LOG '\''+name+'\''\n'\''+p.read_text(errors='\''replace'\'')[-8000:])
+           if p.exists():print('\''LOG '\''+name+'\''\n'\''+p.read_text(errors='\''replace'\'')[-9000:])
+          p=r/'\''capture-a1/events.jsonl'\''
+          if p.exists():print('\''RECENT_EVENTS\n'\''+'\''\n'\''.join(p.read_text().splitlines()[-6:]))
           b=json.dumps(bundle,indent=2).encode()
           print('\''BUNDLE_SHA256 '\''+hashlib.sha256(b).hexdigest())
           print('\''BUNDLE_GZIP_B64 '\''+base64.b64encode(gzip.compress(b,mtime=0)).decode())
           print('\''GPU_MEMORY '\''+subprocess.check_output(['\''/usr/local/corex/bin/ixsmi'\'','\''--query-gpu=memory.used'\'','\''--format=csv,noheader'\''],text=True).strip())
-          E253STATUS'
+          E253STATUS2'
