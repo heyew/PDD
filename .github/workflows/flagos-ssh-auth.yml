@@ -16,7 +16,7 @@ jobs:
     env:
       FLAGOS_SSH_KEY: ${{ secrets.a123 }}
     steps:
-      - name: Preserve sixteen E256 raw lifecycle logits
+      - name: Read current FlagOS stack and idle BI-V150 status
         shell: bash
         run: |
           set -euo pipefail
@@ -36,19 +36,39 @@ jobs:
             -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$HOME/.ssh/known_hosts" \
             -o ConnectTimeout=8 -o LogLevel=ERROR \
             lab_inst_01M65FEWSPNR8MP3DS4KNYDQ2C@ssh.flagos.io \
-            'python3 - <<'\''E256_LOGITS'\''
-          import json,hashlib,base64,lzma,subprocess
+            'python3 - <<'\''READ_CHECK'\''
+          import os
+          import json
+          import subprocess
           from pathlib import Path
-          out=Path('\''/root/e256/lifecycle-a2'\'')
-          assert hashlib.sha256((out/'\''result.json'\'').read_bytes()).hexdigest()=='\''85fc675045e6297b6d60c589a1451c67aeb819cc535ddf82bce749fdbe1636f1'\''
-          r=json.loads((out/'\''result.json'\'').read_text());assert r['\''complete'\''] and r['\''functional_passed'\'']
-          files=sorted((out/'\''logits'\'').glob('\''*.npz'\''));assert len(files)==16
-          data={str(p.relative_to('\''/root/e256'\'')):base64.b64encode(p.read_bytes()).decode() for p in files}
-          raw=json.dumps(data,sort_keys=True).encode();packed=lzma.compress(raw,format=lzma.FORMAT_XZ,check=lzma.CHECK_SHA256,preset=6)
-          print('\''E256_LOGITS_META'\'',json.dumps({'\''files'\'':len(files),'\''raw_bytes'\'':len(raw),'\''xz_bytes'\'':len(packed),'\''raw_sha256'\'':hashlib.sha256(raw).hexdigest(),'\''files_sha256'\'':{p.name:hashlib.sha256(p.read_bytes()).hexdigest() for p in files}}),flush=True)
-          print('\''E256_LOGITS_B64_BEGIN'\'',flush=True)
-          s=base64.b64encode(packed).decode()
-          for i in range(0,len(s),60000):print(s[i:i+60000],flush=True)
-          print('\''E256_LOGITS_B64_END'\'',flush=True)
-          print('\''GPU_MEMORY'\'',subprocess.check_output(['\''ixsmi'\'','\''--query-gpu=memory.used'\'','\''--format=csv,noheader'\''],text=True,timeout=5),flush=True)
-          E256_LOGITS'
+          print("PROBE_START", flush=True)
+          print("IDENTITY", subprocess.check_output(["id","-un"],text=True).strip())
+          print("PWD", os.getcwd())
+          try:
+           print("IXSMI", subprocess.check_output(["ixsmi"],text=True,timeout=8)[0:6000])
+          except Exception as e:
+           print("IXSMI_ERROR",type(e).__name__,str(e)[:200])
+          for root in [Path("/root"),Path("/workspace")]:
+           try:
+            entries=sorted(root.iterdir(),key=lambda x:x.name)
+            print("ROOT_ENTRIES",str(root),[(x.name,"dir" if x.is_dir() else "file") for x in entries][:140])
+           except Exception as e:print("LIST_ERROR",str(root),str(e)[:150])
+          for root in [Path("/root"),Path("/workspace")]:
+           if not root.exists(): continue
+           found=[]
+           for base, dirs, files in os.walk(root):
+            depth=len(Path(base).relative_to(root).parts)
+            dirs[:]=[d for d in dirs if d not in [".git","node_modules",".cache","venv",".venv","site-packages"] and not d.startswith(".") and depth<4]
+            if "CURRENT.md" in files:
+             found.append(Path(base)/"CURRENT.md")
+             if len(found)>=12:break
+           print("CURRENT_PATHS",str(root),[str(x) for x in found])
+           for f in found[:4]:
+            data=f.read_text(errors="replace")
+            print("CURRENT_FILE",str(f),"BYTES",len(data),"TAIL",data[-15000:])
+          for name in ["e253","e255","e256","e257","e258","e259","e260","e261","e262","e263"]:
+           root=Path("/root")/name
+           if root.exists():
+            print("EXP_DIR",name,[(x.name,"d" if x.is_dir() else "f") for x in sorted(root.iterdir(),key=lambda y:y.name)][:65])
+          print("PROBE_END",flush=True)
+                    READ_CHECK'
